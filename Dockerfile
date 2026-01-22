@@ -29,4 +29,6 @@ COPY . .
 EXPOSE 8000
 
 # Run the application
+# Note: This expects a main.py file with a FastAPI app instance named 'app'
+# Adjust the command based on your actual application structure
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
