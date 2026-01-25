@@ -8,7 +8,8 @@
 		"vscode": {
 			"extensions": [
 				"ms-python.python",
-				"ms-azuretools.vscode-docker"
+				"ms-azuretools.vscode-docker",
+				"GitHub.copilot-chat"
 			]
 	},
 	"forwardPorts": [8000],

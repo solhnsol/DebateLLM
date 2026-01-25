@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debate Agent - 토론 AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 900px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message-group {
+            margin-bottom: 15px;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message {
+            margin-bottom: 8px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            word-wrap: break-word;
+            max-width: 85%;
+        }
+
+        .user-message {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+            margin-right: 0;
+            text-align: right;
+        }
+
+        .agent-message {
+            background: white;
+            color: #333;
+            border-left: 4px solid #667eea;
+        }
+
+        .event-message {
+            background: #e8f4f8;
+            color: #0c3d5c;
+            border-left: 4px solid #17a2b8;
+            font-size: 13px;
+        }
+
+        .thinking-message {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+            font-size: 13px;
+            font-style: italic;
+        }
+
+        .tool-message {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+            font-size: 13px;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+
+        .message-label {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 3px;
+            opacity: 0.8;
+        }
+
+        .input-section {
+            border-top: 1px solid #ddd;
+            padding: 15px 20px;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎤 Debate Agent</h1>
+            <p>AI와 함께하는 지능형 토론 플랫폼</p>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div style="text-align: center; color: #999; padding: 20px;">
+                <p>시작할 주제를 입력해주세요</p>
+            </div>
+        </div>
+
+        <div class="input-section">
+            <input 
+                type="text" 
+                id="messageInput" 
+                placeholder="토론할 주제를 입력하세요..." 
+                autocomplete="off"
+            >
+            <button id="sendBtn" onclick="sendMessage()">전송</button>
+        </div>
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chatContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !sendBtn.disabled) {
+                sendMessage();
+            }
+        });
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            // 사용자 메시지 표시
+            addMessage(message, 'user');
+            messageInput.value = '';
+            sendBtn.disabled = true;
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // 마지막 불완전한 라인 유지
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+
+                        try {
+                            const item = JSON.parse(line);
+                            if (item.type === 'event') {
+                                handleEvent(item.data);
+                            } else if (item.type === 'output') {
+                                handleOutput(item.data);
+                            } else if (item.type === 'error') {
+                                addMessage(`❌ 에러: ${item.message}`, 'error');
+                            }
+                        } catch (e) {
+                            console.error('Failed to parse:', line, e);
+                        }
+                    }
+                }
+
+                // 남은 버퍼 처리
+                if (buffer.trim()) {
+                    try {
+                        const item = JSON.parse(buffer);
+                        if (item.type === 'event') {
+                            handleEvent(item.data);
+                        } else if (item.type === 'output') {
+                            handleOutput(item.data);
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse final buffer:', buffer, e);
+                    }
+                }
+            } catch (error) {
+                addMessage(`❌ 오류: ${error.message}`, 'error');
+            } finally {
+                sendBtn.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        function handleEvent(eventData) {
+            const eventType = eventData.type;
+
+            if (eventType === 'thinking_delta') {
+                addMessage(`💭 ${eventData.content}`, 'thinking', true);
+            } else if (eventType === 'tool_call') {
+                addMessage(`🔧 도구 호출: ${eventData.tool_name}`, 'tool');
+            } else if (eventType === 'tool_result') {
+                addMessage(`✅ 결과: ${eventData.result}`, 'tool');
+            } else if (eventType === 'final_result') {
+                addMessage(`✨ 최종 응답 생성 완료`, 'event');
+            }
+            // text_delta는 무시 (최종 output에서 처리)
+        }
+
+        function handleOutput(outputData) {
+            // DebateResponse 객체 표시
+            if (outputData && typeof outputData === 'object') {
+                const messageGroup = document.createElement('div');
+                messageGroup.className = 'message-group';
+                
+                // 주요 반론
+                if (outputData.argument) {
+                    const argumentDiv = document.createElement('div');
+                    argumentDiv.className = 'message agent-message';
+                    argumentDiv.innerHTML = `<strong>💬 반론:</strong><br>${outputData.argument}`;
+                    messageGroup.appendChild(argumentDiv);
+                }
+                
+                // 논리적 오류 지적
+                if (outputData.detected_fallacy) {
+                    const fallacyDiv = document.createElement('div');
+                    fallacyDiv.className = 'message event-message';
+                    fallacyDiv.innerHTML = `<strong>⚠️ 논리적 오류:</strong> ${outputData.detected_fallacy}`;
+                    messageGroup.appendChild(fallacyDiv);
+                }
+                
+                // 핵심 증거
+                if (outputData.key_evidence) {
+                    const evidenceDiv = document.createElement('div');
+                    evidenceDiv.className = 'message tool-message';
+                    evidenceDiv.innerHTML = `<strong>📊 핵심 증거:</strong> ${outputData.key_evidence}`;
+                    messageGroup.appendChild(evidenceDiv);
+                }
+                
+                // 사용된 전략 & 도발 수준
+                if (outputData.strategy_used) {
+                    const strategyDiv = document.createElement('div');
+                    strategyDiv.className = 'message thinking-message';
+                    const provocationEmoji = '🔥'.repeat(outputData.provocation_level || 1);
+                    strategyDiv.innerHTML = `<strong>🎯 전략:</strong> ${outputData.strategy_used} ${provocationEmoji} (도발 레벨: ${outputData.provocation_level}/5)`;
+                    messageGroup.appendChild(strategyDiv);
+                }
+                
+                if (messageGroup.children.length > 0) {
+                    chatContainer.appendChild(messageGroup);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+            }
+        }
+
+        function addMessage(content, type = 'agent', isStreaming = false) {
+            if (!content) return;
+
+            let messageElement = document.querySelector('.message-group:last-child .message.agent-message');
+
+            // 스트리밍 중이고 마지막 메시지가 같은 타입이면 이어붙이기
+            if (isStreaming && messageElement && type === 'agent') {
+                messageElement.textContent += content;
+            } else if (isStreaming && document.querySelector('.message-group:last-child .message.thinking-message') && type === 'thinking') {
+                document.querySelector('.message-group:last-child .message.thinking-message').textContent += content;
+            } else {
+                const messageGroup = document.createElement('div');
+                messageGroup.className = 'message-group';
+
+                messageElement = document.createElement('div');
+                messageElement.className = `message ${getMessageClass(type)}`;
+
+                if (type !== 'agent') {
+                    const label = document.createElement('div');
+                    label.className = 'message-label';
+                    label.textContent = getLabel(type);
+                    messageGroup.appendChild(label);
+                }
+
+                messageElement.textContent = content;
+                messageGroup.appendChild(messageElement);
+                chatContainer.appendChild(messageGroup);
+            }
+
+            // 자동 스크롤
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function getMessageClass(type) {
+            const classMap = {
+                'user': 'user-message',
+                'agent': 'agent-message',
+                'thinking': 'thinking-message',
+                'tool': 'tool-message',
+                'event': 'event-message',
+                'error': 'error-message'
+            };
+            return classMap[type] || 'agent-message';
+        }
+
+        function getLabel(type) {
+            const labelMap = {
+                'thinking': '💭 모델 생각',
+                'tool': '🔧 도구',
+                'event': '📊 이벤트',
+                'error': '❌ 에러'
+            };
+            return labelMap[type] || '';
+        }
+    </script>
+</body>
+</html>
