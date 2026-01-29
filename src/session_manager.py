@@ -1,8 +1,9 @@
 import uuid
-from typing import Dict, AsyncIterator, Optional, List
+from typing import Dict, AsyncIterator, Literal, Optional, List
 from datetime import datetime
 from pydantic import BaseModel
-from pydantic_ai.messages import ModelMessage
+from pydantic_ai import ModelRequest, TextPart
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, UserPromptPart, SystemPromptPart
 from src.variables import UserRole
 import random
 
@@ -19,28 +20,39 @@ class ChatMessage(BaseModel):
 class ChatSession:
     """개별 채팅 세션"""
     
-    def __init__(self, session_id: str, topic: str , user_id: str, user_role: str):
+    def __init__(self, session_id: str, topic: str , user_id: str, user_role: Literal[UserRole.USER_ROLES]):
         self.session_id = session_id or str(uuid.uuid4())
         self.topic = topic
         self.created_at = datetime.now()
         self.updated_at = datetime.now()
-        
-        # 메시지 히스토리 (표시용)
-        self.chat_history: List[ChatMessage] = []
-        # 모델에 전달할 히스토리 (role/content dict 또는 ModelMessage)
+
+        # 모델에 전달할 히스토리
         self.message_history: List[dict | ModelMessage] = []
         self.user_id = user_id
         self.user_role = user_role
+        self.agent_role = UserRole.USER_ROLES[1] if user_role == UserRole.USER_ROLES[0] else UserRole.USER_ROLES[0]
+        
+        self.add_moderator_message(f"토론이 시작되었습니다. 토론 주제는 {topic}입니다.")
+        self.add_moderator_message(f"먼저 찬성 측 토론자부터 발언해 주세요.")
+        self.add_system_message(f"[시스템 정보] 당신의 역할은 {self.agent_role}입니다.")
     
-    def add_message(self, content: str, role: str):
-        """사용자 메시지 추가"""
-        self.chat_history.append(ChatMessage(
-            role=role,
-            content=content,
-            timestamp=datetime.now()
-        ))
-        self.updated_at = datetime.now()
+    def add_judge_message(self, content: str):
+        """Judge 메시지 추가 - UserPromptPart로 prefix 포함"""
+        self.message_history.append(
+            ModelRequest(parts=[UserPromptPart(content=f"[Judge]: {content}")])
+        )
     
+    def add_moderator_message(self, content: str):
+        """Moderator 메시지 추가 - UserPromptPart로 prefix 포함"""
+        self.message_history.append(
+            ModelRequest(parts=[UserPromptPart(content=f"[Moderator]: {content}")])
+        )
+
+    def add_system_message(self, content: str):
+        """System 메시지 추가 - SystemPromptPart 사용"""
+        self.message_history.append(
+            ModelRequest(parts=[UserPromptPart(content=f"[System]: {content}")])
+        )
     
     async def send_message(self, user_input: str, test_mode: bool = False) -> AsyncIterator[dict]:
         """
@@ -53,10 +65,6 @@ class ChatSession:
                 - full_content: 누적된 전체 콘텐츠
                 - partial: bool (output일 때만)
         """
-        # 사용자 메시지를 히스토리에 추가
-        self.add_message(content=user_input, role=self.user_role)
-        
-        final_output = None
         
         async for event in debate_agent.invoke(
             user_input,
@@ -64,21 +72,48 @@ class ChatSession:
             test_mode=test_mode
         ):
             yield event
-            
-            # 최종 output 저장
-            if event.get("type") == "output" and not event.get("partial", False):
-                final_output = event["content"]
 
             if event.get("type") == "history":
                 self.message_history.extend(event["data"])
-        
-        # 최종 응답을 히스토리에 추가
-        if final_output:
-            self.add_message(final_output, role=UserRole.USER_ROLES[1] if self.user_role == UserRole.USER_ROLES[0] else UserRole.USER_ROLES[0])
     
     def get_chat_history(self) -> List[ChatMessage]:
-        """채팅 히스토리 반환"""
-        return self.chat_history
+        """message_history에서 role과 text content만 필터링해서 반환 (UI용)"""
+        result = []
+        for msg in self.message_history:
+            text_content = ""
+            role = "unknown"
+            
+            # ModelRequest 또는 ModelResponse
+            if hasattr(msg, 'parts'):
+                for part in msg.parts:
+                    if isinstance(part, TextPart):
+                        text_content += part.content
+                    elif isinstance(part, UserPromptPart):
+                        # [Judge], [Moderator] 같은 prefix 파싱
+                        content = part.content
+                        if content.startswith("[Judge]:"):
+                            role = "judge"
+                            text_content += content.replace("[Judge]:", "").strip()
+                        elif content.startswith("[Moderator]:"):
+                            role = "moderator"
+                            text_content += content.replace("[Moderator]:", "").strip()
+                        else:
+                            role = "user"
+                            text_content += content
+                
+                # ModelRequest vs ModelResponse 구분
+                if isinstance(msg, ModelRequest) and role == "unknown":
+                    role = "user"
+                elif isinstance(msg, ModelResponse) and role == "unknown":
+                    role = "assistant"
+            
+            if text_content:
+                result.append(ChatMessage(
+                    role=role,
+                    content=text_content,
+                    timestamp=datetime.now()
+                ))
+        return result
     
     def to_dict(self) -> dict:
         """세션 정보를 dict로 변환"""
@@ -86,8 +121,7 @@ class ChatSession:
             "session_id": self.session_id,
             "topic": self.topic,
             "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-            "message_count": len(self.chat_history)
+            "updated_at": self.updated_at.isoformat()
         }
 
 

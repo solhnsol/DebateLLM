@@ -2,13 +2,13 @@
 roles:
   # 토론 참가자 (2명)
   user_roles:
-    - player_1
-    - player_2
+    - 찬성 측
+    - 반대 측
   
   # 심판 (1명)
   judge_role: judge
   
-  # 사회자 (선택적)
+  # 사회자
   moderator_role: moderator
 
 # 메시지 역할
