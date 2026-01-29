@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Debate Agent - 토론 AI</title>
+    <!-- Import marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -27,7 +29,7 @@
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             width: 100%;
             max-width: 900px;
-            height: 600px;
+            height: 80vh; 
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -59,8 +61,11 @@
         }
 
         .message-group {
-            margin-bottom: 15px;
+            margin-bottom: 20px;
             animation: fadeIn 0.3s ease-in;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
         }
 
         @keyframes fadeIn {
@@ -75,65 +80,119 @@
         }
 
         .message {
-            margin-bottom: 8px;
-            padding: 10px 15px;
+            padding: 12px 18px;
+            border-radius: 12px;
+            word-wrap: break-word; 
+            overflow-wrap: break-word;
+            max-width: 90%;
+            line-height: 1.5;
+            white-space: pre-wrap; 
+            font-size: 15px;
+        }
+
+        /* Markdown Styles within messages */
+        .message p {
+            margin-bottom: 10px;
+        }
+        .message p:last-child {
+            margin-bottom: 0;
+        }
+        .message ul, .message ol {
+            margin-left: 20px;
+            margin-bottom: 10px;
+        }
+        .message code {
+            background: rgba(0,0,0,0.1);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .message pre {
+            background: #f1f1f1;
+            padding: 10px;
             border-radius: 8px;
-            word-wrap: break-word;
-            max-width: 85%;
+            overflow-x: auto;
+            margin-bottom: 10px;
+        }
+        .message pre code {
+            background: none;
+            padding: 0;
+        }
+        .message blockquote {
+            border-left: 3px solid #ccc;
+            margin: 0 0 10px 0;
+            padding-left: 10px;
+            color: #666;
         }
 
         .user-message {
             background: #667eea;
             color: white;
-            margin-left: auto;
-            margin-right: 0;
-            text-align: right;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+        }
+        
+        .user-message code {
+            background: rgba(255,255,255,0.2); /* Lighter code background for user bubble */
         }
 
         .agent-message {
             background: white;
             color: #333;
             border-left: 4px solid #667eea;
+            align-self: flex-start;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
 
-        .event-message {
-            background: #e8f4f8;
-            color: #0c3d5c;
-            border-left: 4px solid #17a2b8;
-            font-size: 13px;
+        .status-indicator {
+            background: linear-gradient(135deg, #e0e7ff 0%, #f3e8ff 100%);
+            border-left: 4px solid #667eea;
+            color: #4c51bf;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            animation: pulse 1.5s infinite;
+            align-self: flex-start;
+            max-width: 80%;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
         }
-
-        .thinking-message {
-            background: #fff3cd;
-            color: #856404;
-            border-left: 4px solid #ffc107;
-            font-size: 13px;
-            font-style: italic;
+        
+        .status-indicator .status-icon {
+            display: inline-block;
+            margin-right: 8px;
         }
+        
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
 
-        .tool-message {
+        .evidence-message {
             background: #d4edda;
             color: #155724;
             border-left: 4px solid #28a745;
-            font-size: 13px;
+            font-size: 14px;
+            align-self: flex-start;
         }
 
         .error-message {
             background: #f8d7da;
             color: #721c24;
             border-left: 4px solid #dc3545;
+            align-self: center;
         }
 
         .message-label {
             font-weight: bold;
-            font-size: 12px;
-            margin-bottom: 3px;
-            opacity: 0.8;
+            font-size: 11px;
+            margin-bottom: 2px;
+            color: #666;
+            margin-left: 5px;
         }
 
         .input-section {
             border-top: 1px solid #ddd;
-            padding: 15px 20px;
+            padding: 20px;
             background: white;
             display: flex;
             gap: 10px;
@@ -144,7 +203,7 @@
             padding: 12px;
             border: 2px solid #ddd;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 16px;
             transition: border-color 0.3s;
         }
 
@@ -159,10 +218,11 @@
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: bold;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
+            white-space: nowrap;
         }
 
         button:hover:not(:disabled) {
@@ -173,28 +233,16 @@
         button:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+            transform: none;
         }
-
-        .spinner {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-right: 8px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .status {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
+        
+        .topic-status {
+            text-align: center; 
+            color: #666; 
+            padding: 10px;
+            font-size: 0.9em;
+            background: #f1f1f1;
+            border-bottom: 1px solid #ddd;
         }
     </style>
 </head>
@@ -204,10 +252,14 @@
             <h1>🎤 Debate Agent</h1>
             <p>AI와 함께하는 지능형 토론 플랫폼</p>
         </div>
+        
+        <div class="topic-status" id="topicStatus" style="display:none;">
+            Topic: <span id="currentTopic" style="font-weight:bold;"></span>
+        </div>
 
         <div class="chat-container" id="chatContainer">
-            <div style="text-align: center; color: #999; padding: 20px;">
-                <p>시작할 주제를 입력해주세요</p>
+            <div id="welcomeMessage" style="text-align: center; color: #999; padding: 40px;">
+                <p>토론할 주제를 입력하여 시작해주세요.</p>
             </div>
         </div>
 
@@ -223,9 +275,22 @@
     </div>
 
     <script>
+        // Configure marked to handle line breaks correctly if desired
+        marked.setOptions({
+            breaks: true, // Convert \n to <br>
+            gfm: true
+        });
+
         const chatContainer = document.getElementById('chatContainer');
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
+        const topicStatus = document.getElementById('topicStatus');
+        const currentTopicSpan = document.getElementById('currentTopic');
+        const welcomeMessage = document.getElementById('welcomeMessage');
+
+        // Generate a random user ID for this session
+        const userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        let currentSessionId = null;
 
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !sendBtn.disabled) {
@@ -237,187 +302,226 @@
             const message = messageInput.value.trim();
             if (!message) return;
 
-            // 사용자 메시지 표시
-            addMessage(message, 'user');
+            // Clear input
             messageInput.value = '';
+            messageInput.blur();
             sendBtn.disabled = true;
 
+            // Remove welcome message if it exists
+            if (welcomeMessage) welcomeMessage.style.display = 'none';
+
+            // User Message UI
+            addUserMessage(message);
+
             try {
-                const response = await fetch('/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                // Determine if we need to create a session first
+                if (!currentSessionId) {
+                    await createSession(message);
+                    // Update UI to show we are now debating this topic
+                    topicStatus.style.display = 'block';
+                    currentTopicSpan.textContent = message;
                 }
 
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
+                // Send the message to the chat endpoint
+                await streamChat(message);
 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop(); // 마지막 불완전한 라인 유지
-
-                    for (const line of lines) {
-                        if (!line.trim()) continue;
-
-                        try {
-                            const item = JSON.parse(line);
-                            if (item.type === 'event') {
-                                handleEvent(item.data);
-                            } else if (item.type === 'output') {
-                                handleOutput(item.data);
-                            } else if (item.type === 'error') {
-                                addMessage(`❌ 에러: ${item.message}`, 'error');
-                            }
-                        } catch (e) {
-                            console.error('Failed to parse:', line, e);
-                        }
-                    }
-                }
-
-                // 남은 버퍼 처리
-                if (buffer.trim()) {
-                    try {
-                        const item = JSON.parse(buffer);
-                        if (item.type === 'event') {
-                            handleEvent(item.data);
-                        } else if (item.type === 'output') {
-                            handleOutput(item.data);
-                        }
-                    } catch (e) {
-                        console.error('Failed to parse final buffer:', buffer, e);
-                    }
-                }
             } catch (error) {
-                addMessage(`❌ 오류: ${error.message}`, 'error');
+                console.error(error);
+                addErrorMessage(`오류 발생: ${error.message}`);
             } finally {
                 sendBtn.disabled = false;
                 messageInput.focus();
-            }
-        }
-
-        function handleEvent(eventData) {
-            const eventType = eventData.type;
-
-            if (eventType === 'thinking_delta') {
-                addMessage(`💭 ${eventData.content}`, 'thinking', true);
-            } else if (eventType === 'tool_call') {
-                addMessage(`🔧 도구 호출: ${eventData.tool_name}`, 'tool');
-            } else if (eventType === 'tool_result') {
-                addMessage(`✅ 결과: ${eventData.result}`, 'tool');
-            } else if (eventType === 'final_result') {
-                addMessage(`✨ 최종 응답 생성 완료`, 'event');
-            }
-            // text_delta는 무시 (최종 output에서 처리)
-        }
-
-        function handleOutput(outputData) {
-            // DebateResponse 객체 표시
-            if (outputData && typeof outputData === 'object') {
-                const messageGroup = document.createElement('div');
-                messageGroup.className = 'message-group';
-                
-                // 주요 반론
-                if (outputData.argument) {
-                    const argumentDiv = document.createElement('div');
-                    argumentDiv.className = 'message agent-message';
-                    argumentDiv.innerHTML = `<strong>💬 반론:</strong><br>${outputData.argument}`;
-                    messageGroup.appendChild(argumentDiv);
-                }
-                
-                // 논리적 오류 지적
-                if (outputData.detected_fallacy) {
-                    const fallacyDiv = document.createElement('div');
-                    fallacyDiv.className = 'message event-message';
-                    fallacyDiv.innerHTML = `<strong>⚠️ 논리적 오류:</strong> ${outputData.detected_fallacy}`;
-                    messageGroup.appendChild(fallacyDiv);
-                }
-                
-                // 핵심 증거
-                if (outputData.key_evidence) {
-                    const evidenceDiv = document.createElement('div');
-                    evidenceDiv.className = 'message tool-message';
-                    evidenceDiv.innerHTML = `<strong>📊 핵심 증거:</strong> ${outputData.key_evidence}`;
-                    messageGroup.appendChild(evidenceDiv);
-                }
-                
-                // 사용된 전략 & 도발 수준
-                if (outputData.strategy_used) {
-                    const strategyDiv = document.createElement('div');
-                    strategyDiv.className = 'message thinking-message';
-                    const provocationEmoji = '🔥'.repeat(outputData.provocation_level || 1);
-                    strategyDiv.innerHTML = `<strong>🎯 전략:</strong> ${outputData.strategy_used} ${provocationEmoji} (도발 레벨: ${outputData.provocation_level}/5)`;
-                    messageGroup.appendChild(strategyDiv);
-                }
-                
-                if (messageGroup.children.length > 0) {
-                    chatContainer.appendChild(messageGroup);
-                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                // If session is created, update placeholder
+                if (currentSessionId) {
+                    messageInput.placeholder = "반론을 입력하세요...";
                 }
             }
         }
 
-        function addMessage(content, type = 'agent', isStreaming = false) {
-            if (!content) return;
+        async function createSession(topic) {
+            const res = await fetch('/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, topic: topic })
+            });
+            if (!res.ok) {
+                throw new Error('세션 생성 실패: ' + res.statusText);
+            }
+            const data = await res.json();
+            currentSessionId = data.session_id;
+        }
 
-            let messageElement = document.querySelector('.message-group:last-child .message.agent-message');
+        async function streamChat(message) {
+            const response = await fetch(`/sessions/${currentSessionId}/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            });
 
-            // 스트리밍 중이고 마지막 메시지가 같은 타입이면 이어붙이기
-            if (isStreaming && messageElement && type === 'agent') {
-                messageElement.textContent += content;
-            } else if (isStreaming && document.querySelector('.message-group:last-child .message.thinking-message') && type === 'thinking') {
-                document.querySelector('.message-group:last-child .message.thinking-message').textContent += content;
-            } else {
-                const messageGroup = document.createElement('div');
-                messageGroup.className = 'message-group';
-
-                messageElement = document.createElement('div');
-                messageElement.className = `message ${getMessageClass(type)}`;
-
-                if (type !== 'agent') {
-                    const label = document.createElement('div');
-                    label.className = 'message-label';
-                    label.textContent = getLabel(type);
-                    messageGroup.appendChild(label);
-                }
-
-                messageElement.textContent = content;
-                messageGroup.appendChild(messageElement);
-                chatContainer.appendChild(messageGroup);
+            if(!response.ok) {
+                throw new Error(`Chat request failed: ${response.status}`);
             }
 
-            // 자동 스크롤
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            // Containers for the response components
+            const responseGroup = document.createElement('div');
+            responseGroup.className = 'message-group';
+            chatContainer.appendChild(responseGroup);
+            
+            // To track elements we created to update them
+            let elements = {
+                statusIndicator: null,
+                argument: null
+            };
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep incomplete line
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const item = JSON.parse(line);
+                        handleStreamItem(item, responseGroup, elements);
+                    } catch (e) {
+                        console.error('JSON Parse Error', e);
+                    }
+                }
+            }
+
+            // Remove status indicator when done if it exists
+            if (elements.statusIndicator) {
+                elements.statusIndicator.remove();
+            }
+
+            if (buffer.trim()) {
+                try {
+                    const item = JSON.parse(buffer);
+                    handleStreamItem(item, responseGroup, elements);
+                } catch (e) { console.error('Final JSON Parse Error', e); }
+            }
+        }
+
+        function handleStreamItem(item, group, elements) {
+            if (item.type === 'status') {
+                // Update or create status indicator
+                const statusText = getStatusText(item.status, item.tool_name);
+                const statusIcon = getStatusIcon(item.status);
+                
+                if (!elements.statusIndicator) {
+                    elements.statusIndicator = document.createElement('div');
+                    elements.statusIndicator.className = 'status-indicator';
+                    group.appendChild(elements.statusIndicator);
+                }
+                
+                elements.statusIndicator.innerHTML = `<span class="status-icon">${statusIcon}</span>${statusText}`;
+                scrollToBottom();
+            
+            } else if (item.type === 'output') {
+                // Remove status indicator when output starts
+                if (elements.statusIndicator) {
+                    elements.statusIndicator.remove();
+                    elements.statusIndicator = null;
+                }
+
+                if (!elements.argument) {
+                    elements.argument = createMessageElement(null, 'agent-message');
+                    group.appendChild(elements.argument.container);
+                }
+                
+                // Use marked.parse for Markdown rendering
+                elements.argument.content.innerHTML = marked.parse(item.full_content);
+                
+                scrollToBottom();
+            } else if (item.type === 'error') {
+                // Remove status indicator on error
+                if (elements.statusIndicator) {
+                    elements.statusIndicator.remove();
+                    elements.statusIndicator = null;
+                }
+                addErrorMessage(item.message);
+            }
+        }
+        
+        function getStatusText(status, toolName) {
+            switch(status) {
+                case 'thinking':
+                    return '생각하는 중...';
+                case 'tool_calling':
+                    return `도구 사용 중: ${toolName || 'Unknown'}`;
+                case 'output':
+                    return '응답 생성 중...';
+                default:
+                    return '처리 중...';
+            }
+        }
+        
+        function getStatusIcon(status) {
+            switch(status) {
+                case 'thinking':
+                    return '💭';
+                case 'tool_calling':
+                    return '🔧';
+                case 'output':
+                    return '✍️';
+                default:
+                    return '⏳';
+            }
+        }
+
+        function createMessageElement(labelText, messageClass) {
+            const container = document.createElement('div');
+            
+            if (labelText) {
+                const label = document.createElement('div');
+                label.className = 'message-label';
+                label.textContent = labelText;
+                label.style.marginLeft = '5px';
+                container.appendChild(label);
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${messageClass}`;
+            container.appendChild(messageDiv);
+
+            return { container: container, content: messageDiv };
+        }
+
+        function addUserMessage(text) {
+            const group = document.createElement('div');
+            group.className = 'message-group';
+            group.style.alignItems = 'flex-end'; // Align user messages to right
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message user-message';
+            // Use marked.parse for Markdown rendering
+            msgDiv.innerHTML = marked.parse(text);
+            
+            group.appendChild(msgDiv);
+            chatContainer.appendChild(group);
+            scrollToBottom();
+        }
+
+        function addErrorMessage(text) {
+            const group = document.createElement('div');
+            group.className = 'message-group';
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message error-message';
+            msgDiv.textContent = text;
+            group.appendChild(msgDiv);
+            chatContainer.appendChild(group);
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
             chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-
-        function getMessageClass(type) {
-            const classMap = {
-                'user': 'user-message',
-                'agent': 'agent-message',
-                'thinking': 'thinking-message',
-                'tool': 'tool-message',
-                'event': 'event-message',
-                'error': 'error-message'
-            };
-            return classMap[type] || 'agent-message';
-        }
-
-        function getLabel(type) {
-            const labelMap = {
-                'thinking': '💭 모델 생각',
-                'tool': '🔧 도구',
-                'event': '📊 이벤트',
-                'error': '❌ 에러'
-            };
-            return labelMap[type] || '';
         }
     </script>
 </body>

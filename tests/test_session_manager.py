@@ -1,15 +1,27 @@
 import asyncio
 import time
+import pytest
 from src.session_manager import SessionManager
 
+
+@pytest.mark.asyncio
 async def test_session_manager():
     """SessionManager 테스트"""
     manager = SessionManager()
     
+    session1_id = "12345"
+    session2_id = "67890"
+
+    session1_userid = "user_1"
+    session2_userid = "user_2"
+
+    session1_role = "player 1"
+    session2_role = "player 2"
+
     # 1. 세션 생성
     print("\n=== 1. 세션 생성 ===")
-    session1 = manager.create_session(topic="재생 에너지 vs 원자력")
-    session2 = manager.create_session(topic="AI 윤리")
+    session1 = manager.create_session(topic="재생 에너지 vs 원자력", user_id=session1_userid)
+    session2 = manager.create_session(topic="AI 윤리", user_id=session2_userid)
     
     print(f"세션 1 생성: {session1.session_id}")
     print(f"세션 2 생성: {session2.session_id}")
@@ -28,12 +40,13 @@ async def test_session_manager():
     start_time = time.time()
     final_response = None
     
-    async for event in manager.send_message(session1.session_id, user_input):
+    async for event in manager.send_message(session1.session_id, user_input, test_mode=True):
         elapsed = f"{time.time() - start_time:.2f}s"
         event_type = event.get("type")
         
         if event_type == "thinking":
-            print(f"[{elapsed}] [Thinking] {event['full_content']}")
+            # print(f"[{elapsed}] [Thinking] {event['content']}")
+            pass
         elif event_type == "output":
             if not event.get("partial", False):
                 final_response = event["content"]
@@ -55,7 +68,7 @@ async def test_session_manager():
     user_input2 = "그러면 저장 기술은 어떻게 되는가?"
     print(f"사용자: {user_input2}\n")
     
-    async for event in manager.send_message(session1.session_id, user_input2):
+    async for event in manager.send_message(session1.session_id, user_input2, test_mode=True):
         if event.get("type") == "output" and not event.get("partial", False):
             response = event["content"]
             print(f"[AI 응답] {response.get('argument_speech', 'N/A')[:200]}...")

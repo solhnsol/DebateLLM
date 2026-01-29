@@ -3,6 +3,8 @@ from typing import Dict, AsyncIterator, Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 from pydantic_ai.messages import ModelMessage
+from src.variables import UserRole
+import random
 
 from . import debate_agent
 
@@ -17,16 +19,16 @@ class ChatMessage(BaseModel):
 class ChatSession:
     """개별 채팅 세션"""
     
-    def __init__(self, session_id: str = None, topic: str = None, user_id: str = None, user_role: str = "player 1"):
+    def __init__(self, session_id: str, topic: str , user_id: str, user_role: str):
         self.session_id = session_id or str(uuid.uuid4())
-        self.topic = topic or "일반 토론"
+        self.topic = topic
         self.created_at = datetime.now()
         self.updated_at = datetime.now()
         
         # 메시지 히스토리 (표시용)
         self.chat_history: List[ChatMessage] = []
         # 모델에 전달할 히스토리 (role/content dict 또는 ModelMessage)
-        self.model_history: List[dict | ModelMessage] = []
+        self.message_history: List[dict | ModelMessage] = []
         self.user_id = user_id
         self.user_role = user_role
     
@@ -37,7 +39,6 @@ class ChatSession:
             content=content,
             timestamp=datetime.now()
         ))
-        self.model_history.append({"role": role, "content": content})
         self.updated_at = datetime.now()
     
     
@@ -53,15 +54,13 @@ class ChatSession:
                 - partial: bool (output일 때만)
         """
         # 사용자 메시지를 히스토리에 추가
-        self.add_message(user_input, role=self.user_role)
+        self.add_message(content=user_input, role=self.user_role)
         
         final_output = None
         
-        # debate_agent의 invoke를 통해 스트리밍
-        # history=None이면 agent가 자동으로 히스토리 관리
         async for event in debate_agent.invoke(
             user_input,
-            history=self.model_history,
+            history=self.message_history,
             test_mode=test_mode
         ):
             yield event
@@ -71,11 +70,11 @@ class ChatSession:
                 final_output = event["content"]
 
             if event.get("type") == "history":
-                self.model_history.append(event["data"])
+                self.message_history.extend(event["data"])
         
         # 최종 응답을 히스토리에 추가
         if final_output:
-            self.add_message(final_output, role="player 2" if self.user_role == "player 1" else "player 1")
+            self.add_message(final_output, role=UserRole.USER_ROLES[1] if self.user_role == UserRole.USER_ROLES[0] else UserRole.USER_ROLES[0])
     
     def get_chat_history(self) -> List[ChatMessage]:
         """채팅 히스토리 반환"""
@@ -98,9 +97,11 @@ class SessionManager:
     def __init__(self):
         self.sessions: Dict[str, ChatSession] = {}
     
-    def create_session(self, topic: str = None) -> ChatSession:
+    def create_session(self, user_id: str, topic: str = None) -> ChatSession:
         """새 세션 생성"""
-        session = ChatSession(topic=topic)
+        session_id = str(uuid.uuid4())
+        user_role = random.choice(UserRole.USER_ROLES)
+        session = ChatSession(session_id=session_id, topic=topic, user_id=user_id, user_role=user_role)
         self.sessions[session.session_id] = session
         return session
     

@@ -1,21 +1,28 @@
 import os
-import asyncio
 from contextlib import nullcontext
 from pydantic_ai import (
     Agent,
-    PartDeltaEvent,
     PartStartEvent,
-    ThinkingPartDelta,
-    ToolCallPartDelta,
+    PartDeltaEvent,
 )
-from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
-from pydantic_ai.models.function import FunctionModel, AgentInfo, DeltaToolCall, DeltaThinkingPart, ThinkingPart, ToolCallPart
-from pydantic_ai.messages import ModelMessage
-from pydantic import BaseModel, Field, TypeAdapter
-from typing import Optional, Sequence
-from dotenv import load_dotenv
-import json
 
+from pydantic_ai.models.function import FunctionModel, AgentInfo, DeltaToolCall, DeltaThinkingPart
+from pydantic_ai.messages import (
+    ModelMessage, 
+    TextPart, TextPartDelta,
+    ToolCallPart
+)
+from pydantic_ai import Agent, RunContext
+from tavily import TavilyClient
+
+from typing import Literal, Sequence
+from dotenv import load_dotenv
+
+from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
+from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
+from pydantic_ai.models.xai import XaiModel, XaiModelSettings
+from xai_sdk import AsyncClient
+from pydantic_ai.providers.xai import XaiProvider
 
 load_dotenv()
 
@@ -32,152 +39,127 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 SYSTEM_PROMPT_PATH = os.path.join(BASE_DIR, "data", "system_prompts", "debate.txt")
 SYSTEM_PROMPT = _read_text(SYSTEM_PROMPT_PATH)
 
-class DebateResponse(BaseModel):
-    internal_monologue: str = Field(
-        ..., 
-        description=(
-            "RAW Internal thoughts in Korean (Banmal/Informal). "
-            "React to the user's stupidity, analyze the logic gap, and plot your strategy."
-        )
-    )
 
-    key_evidence: Optional[str] = Field(
-        None, description="검색을 통해 찾은 강력한 사실이나 통계 등 명백한 증거."
-    )
-    argument_speech: str = Field(
-        ..., description=("당신의 주장을 논리적으로 전개한 완전한 연설문이나 상대방의 주장에 대한 반박 연설문."
-                          "Write like a chat message, not an essay.")
-    )
-    
+# =======모델 선택 및 설정==========
 
-model = OpenAIResponsesModel('gpt-5-nano')
-settings = OpenAIResponsesModelSettings(
-    openai_reasoning_effort='low',
-)
+# model = OpenAIResponsesModel('gpt-5.2')
+# settings = OpenAIResponsesModelSettings(
+#     openai_reasoning_effort='medium',
+# )
+
+model = GoogleModel('gemini-2.5-flash-lite')
+settings = GoogleModelSettings(google_thinking_config={'thinking_budget': 512, 'include_thoughts': False})
+
+# xai_client = AsyncClient(api_key=os.environ.get("XAI_API_KEY", ""))
+# provider = XaiProvider(xai_client=xai_client)
+# model = XaiModel('grok-4-1-fast-reasoning', provider=provider)
+# settings = XaiModelSettings(xai_include_encrypted_content=True, reasoning_effort='low')
+
+# ================================
+
+
 
 agent = Agent(
     model=model,
     model_settings=settings,
-    output_type=DebateResponse,
     system_prompt=SYSTEM_PROMPT,
 )
 
-async def mock_stream_logic(messages: list[ModelMessage], info: AgentInfo):
+tavily = TavilyClient()
+
+@agent.tool_plain
+async def search_web(query: str, search_depth: Literal['basic', 'advanced', 'fast', 'ultra-fast'], search_amount: Literal['less', 'medium', 'more']) -> str:
     """
-    FunctionModel의 stream_function에서 yield 가능한 형식:
-    1. str - 텍스트 응답 스트리밍
-    2. dict[int, DeltaToolCall] - Tool call 스트리밍
-    3. dict[int, DeltaThinkingPart] - Thinking 스트리밍
+    웹에서 최신 정보를 검색할 때 사용합니다. 
+    구체적인 검색어(query)를 입력받아 관련성 높은 검색 결과를 반환합니다.
+
+    Args:
+        query (str): 검색할 내용
+        search_depth: 검색 깊이
+        search_amount: 검색 결과 수
     """
+    max_results_map = {'less': 3, 'medium': 5, 'more': 10}
+
+    response = tavily.search(query=query, search_depth=search_depth, max_results=max_results_map[search_amount])
     
-    # [단계 1] Thinking Process 시뮬레이션
-    # DeltaThinkingPart를 dict[int, DeltaThinkingPart] 형태로 yield
-    thoughts = ["english"]
-    thoughts_desc = [
-        '''
-        thoughts...
-        '''
-    ]
+    results = []
+    for r in response['results']:
+        results.append(f"제목: {r['title']}\n내용: {r['content']}\nURL: {r['url']}\n")
     
-    for i, thought in enumerate(thoughts):
-        await asyncio.sleep(0.1)
-        # DeltaThinkingPart를 dict로 감싸서 yield
-        yield {0: DeltaThinkingPart(content=thought)}
-        chunk_size = 5
-        for j in range(0, len(thoughts_desc[i]), chunk_size):
-            await asyncio.sleep(0.05)
-            chunk = thoughts_desc[i][j : j + chunk_size]
-            yield {0: DeltaThinkingPart(content=chunk)}
-        
+    return "\n---\n".join(results)
 
+tool_name_dict = {'search_web': 'Google 검색'}
 
-    # [단계 2] Structured Output 시뮬레이션 (DeltaToolCall 사용)
-    assert info.output_tools is not None, "Output tools not found!"
-    output_tool_name = info.output_tools[0].name
-
-    # 최종 반환할 데이터 (DebateResponse 구조)
-    final_data = {
-        "internal_monologue": "하, 또 이 소리네. 기저 전력도 모르면서... 팩트로 혼내줘야지.",
-        "argument_speech": "재생 에너지만으로는 기저 전력을 감당할 수 없습니다. 원자력과의 조화가 필요합니다.",
-        "key_evidence": "독일의 에너지 전환 실패 사례 (전기료 급등)",
-    }
-    json_str = json.dumps(final_data, ensure_ascii=False)
-
-    # Tool call 시작 (이름 먼저)
-    yield {1: DeltaToolCall(name=output_tool_name)}
-
-    # JSON 인자 쪼개서 스트리밍
-    chunk_size = 5
-    for i in range(0, len(json_str), chunk_size):
-        await asyncio.sleep(0.05)
-        chunk = json_str[i : i + chunk_size]
-        yield {1: DeltaToolCall(json_args=chunk)}
-
-async def invoke(user_input: str, history: Sequence[ModelMessage] = None, test_mode: bool = False):
-    part_buffers: dict[int, ThinkingPart | ToolCallPart] = {}
-    last_valid_output: DebateResponse | None = None  # 마지막으로 성공한 파싱 결과
+async def invoke(user_input: str, history: Sequence[ModelMessage] = None, test_mode: bool = False, mock_stream_logic=None):
 
     model_override = agent.override(model=FunctionModel(stream_function=mock_stream_logic)) \
                      if test_mode else nullcontext()
 
+    output_full = ""
     with model_override:
-        async for event in agent.run_stream_events(
-            user_input,
-            message_history=history
-        ):
-            outputs, last_valid_output = await _process_event(event, part_buffers, last_valid_output)
-            for out in outputs:
-                yield out
-            
+        async with agent.iter(user_input, message_history=history) as run:
+            yield {
+                "type": "status",
+                "status": "thinking"
+            }
+            async for node in run:
+                if Agent.is_model_request_node(node):
+                    async with node.stream(run.ctx) as request_stream:
+                        async for event in request_stream:
+                           
+                            
+                            # ===== Tool Call Events =====
+                            # Tool 호출 시작
+                            if isinstance(event, PartStartEvent) and isinstance(event.part, ToolCallPart):
+                                yield {
+                                    "type": "status",
+                                    "status": "tool_calling",
+                                    "tool_name": tool_name_dict.get(event.part.tool_name, event.part.tool_name),
+                                    "tool_call_id": event.part.tool_call_id,
+                                    "args": event.part.args if hasattr(event.part, 'args') else None
+                                }
+                            
+                            # ===== Text Output Events =====
+                            # Text 시작 이벤트
+                            elif isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
+                                delta = event.part.content or ""
+                                output_full += delta
+                                
+                                # 첫 output은 status 신호
+                                yield {
+                                    "type": "status",
+                                    "status": "output"
+                                }
+                                
+                                # 초기 content 전송
+                                if delta:
+                                    yield {
+                                        "type": "output",
+                                        "content": delta,
+                                        "full_content": output_full,
+                                        "partial": True
+                                    }
+                            
+                            # Text 델타 이벤트 (스트리밍)
+                            elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
+                                delta = event.delta.content_delta or ""
+                                output_full += delta
+                                yield {
+                                    "type": "output",
+                                    "content": delta,
+                                    "full_content": output_full,
+                                    "partial": True
+                                }
 
-
-async def _process_event(event, part_buffers: dict[int, ThinkingPart | ToolCallPart], last_valid_output: DebateResponse | None):
-    outputs = []
-
-    if isinstance(event, PartStartEvent):
-        if isinstance(event.part, ThinkingPart):
-            part_buffers[event.index] = event.part
-            outputs.append({
-                "type": "thinking",
-                "content": event.part.content or "",
-                "full_content": event.part.content or ""
-            })
-        elif isinstance(event.part, ToolCallPart):
-            part_buffers[event.index] = event.part
-
-    elif isinstance(event, PartDeltaEvent):
-        if isinstance(event.delta, ThinkingPartDelta):
-            part_buffers[event.index] = event.delta.apply(part_buffers[event.index])
-            outputs.append({
-                "type": "thinking",
-                "content": event.delta.content_delta,
-                "full_content": part_buffers[event.index].content
-            })
-        elif isinstance(event.delta, ToolCallPartDelta):
-            part_buffers[event.index] = event.delta.apply(part_buffers[event.index])
-            part = part_buffers[event.index]
-            if part.tool_name == "final_result":
-                args_str = part.args_as_json_str()
-                try:
-                    validated = DebateResponse.model_validate_json(args_str)
-                    outputs.append({
-                        "type": "output",
-                        "content": validated.model_dump(),
-                        "partial": False
-                    })
-                    last_valid_output = validated
-                except Exception:
-                    try:
-                        ta = TypeAdapter(DebateResponse)
-                        validated = ta.validate_json(args_str, experimental_allow_partial='trailing-strings')
-                        if validated != last_valid_output:
-                            last_valid_output = validated
-                            outputs.append({
-                                "type": "output",
-                                "content": validated.model_dump(),
-                                "partial": True
-                            })
-                    except Exception:
-                        pass
-
-    return outputs, last_valid_output
+            # 완료 후 최종 output과 history 반환
+            if run.result:
+                yield {
+                    "type": "output",
+                    "content": "",
+                    "full_content": output_full,
+                    "partial": False
+                }
+                yield {
+                    "type": "history",
+                    "data": run.result.new_messages()
+                }
