@@ -20,6 +20,7 @@ session_manager = SessionManager()
 
 class CreateSessionRequest(BaseModel):
     user_id: str
+    user_role: bool  # True: 찬성, False: 반대
     topic: Optional[str] = None
 
 
@@ -29,8 +30,9 @@ class ChatRequest(BaseModel):
 
 @app.post("/sessions")
 async def create_session(request: CreateSessionRequest):
-    session = session_manager.create_session(
+    session = await session_manager.create_session(
         user_id=request.user_id,
+        user_role=request.user_role,
         topic=request.topic
     )
     return {
@@ -46,15 +48,15 @@ async def create_session(request: CreateSessionRequest):
 
 @app.get("/sessions")
 async def list_sessions(user_id: Optional[str] = None):
-    sessions = session_manager.list_sessions()
+    sessions = await session_manager.list_sessions()
     if user_id:
-        sessions = [s for s in sessions if session_manager.get_session(s["session_id"]).user_id == user_id]
+        sessions = [s for s in sessions if s.get("user_id") == user_id]
     return {"sessions": sessions}
 
 
 @app.get("/sessions/{session_id}")
 async def get_session(session_id: str):
-    session = session_manager.get_session(session_id)
+    session = await session_manager.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return {
@@ -64,13 +66,13 @@ async def get_session(session_id: str):
         "user_role": session.user_role,
         "created_at": session.created_at.isoformat(),
         "updated_at": session.updated_at.isoformat(),
-        "message_count": len(session.chat_history)
+        "message_count": len(session.get_chat_history())
     }
 
 
 @app.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
-    deleted = session_manager.delete_session(session_id)
+    deleted = await session_manager.delete_session(session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"deleted": True}
@@ -78,7 +80,7 @@ async def delete_session(session_id: str):
 
 @app.get("/sessions/{session_id}/history")
 async def get_session_history(session_id: str):
-    history = session_manager.get_chat_history(session_id)
+    history = await session_manager.get_chat_history(session_id)
     if history is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return {
@@ -99,7 +101,7 @@ async def generate_stream(session_id: str, user_input: str):
 
 @app.post("/sessions/{session_id}/chat")
 async def chat_in_session(session_id: str, request: ChatRequest):
-    session = session_manager.get_session(session_id)
+    session = await session_manager.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if not request.message.strip():

@@ -26,29 +26,17 @@ from pydantic_ai.providers.xai import XaiProvider
 
 load_dotenv()
 
-def _read_text(path: str) -> str:
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Missing prompt file: {path}")
-    try:
-        with open(path, "r", encoding="utf-8") as file:
-            return file.read().strip()
-    except Exception as exc:
-        raise RuntimeError(f"Failed to read prompt file {path}: {exc}") from exc
-
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-SYSTEM_PROMPT_PATH = os.path.join(BASE_DIR, "data", "system_prompts", "debate.txt")
-SYSTEM_PROMPT = _read_text(SYSTEM_PROMPT_PATH)
 
 
 # =======모델 선택 및 설정==========
 
-# model = OpenAIResponsesModel('gpt-5.2')
-# settings = OpenAIResponsesModelSettings(
-#     openai_reasoning_effort='medium',
-# )
+model = OpenAIResponsesModel('gpt-5-mini')
+settings = OpenAIResponsesModelSettings(
+    openai_reasoning_effort='low',
+)
 
-model = GoogleModel('gemini-2.5-flash-lite')
-settings = GoogleModelSettings(google_thinking_config={'thinking_budget': 512, 'include_thoughts': False})
+# model = GoogleModel('gemini-2.5-flash-lite')
+# settings = GoogleModelSettings(google_thinking_config={'thinking_budget': 512, 'include_thoughts': False})
 
 # xai_client = AsyncClient(api_key=os.environ.get("XAI_API_KEY", ""))
 # provider = XaiProvider(xai_client=xai_client)
@@ -62,7 +50,13 @@ settings = GoogleModelSettings(google_thinking_config={'thinking_budget': 512, '
 agent = Agent(
     model=model,
     model_settings=settings,
-    system_prompt=SYSTEM_PROMPT,
+    instructions=
+    '''토론의 역할 태그([시스템],[사회자] 등)은 자동으로 붙는다. 당신은 반드시 토론에 참여한 참여자로서 발화하고자 하는 내용만을 서술해야 한다.
+    예시:
+    잘된 예시(O): 운동은 중요합니다. 신체 기능 ~~~ <- 역할 태그 없이 입력함 (Good)
+    잘못된 예시(X): [찬성 측]: 운동은 중요합니다. ~~~ <- 역할 태그를 입력함 (Bad)
+    '[System]' 태그는 시스템의 명령에 해당하는 것으로, 일반 토론자인 당신과는 무관하다. 당신은 반드시 토론자 입장에서만 발화해야 한다.
+    '''
 )
 
 tavily = TavilyClient()
